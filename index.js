@@ -7,21 +7,29 @@ const bot = new TelegramBot(token, { polling: true });
 const CHANNEL_ID = '-1003775562827';
 
 function getJSON(url) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     https.get(url, (res) => {
       let data = '';
-      res.on('data', (chunk) => (data += chunk));
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
       res.on('end', () => {
         try {
-          resolve(JSON.parse(data));
-        } catch {
-          resolve({});
+          const parsed = JSON.parse(data);
+          resolve(parsed);
+        } catch (err) {
+          console.log('JSON parse error:', data);
+          reject(err);
         }
       });
-    }).on('error', () => resolve({}));
+    }).on('error', (err) => {
+      console.log('Request error:', err);
+      reject(err);
+    });
   });
 }
-
 async function getMarketData() {
   const url =
     'https://api.coingecko.com/api/v3/simple/price' +
