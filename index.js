@@ -5,28 +5,20 @@ const token = process.env.TELEGRAM_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
 const CHANNEL_ID = '-1003775562827';
-const COOLDOWN_MS = 60 * 60 * 1000; // 1 hour cooldown per asset
-const AUTO_SCAN_MS = 15 * 60 * 1000; // every 15 minutes
-
-const lastAlertAt = {};
 
 function getJSON(url) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     https.get(url, (res) => {
       let data = '';
-
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-
+      res.on('data', (chunk) => (data += chunk));
       res.on('end', () => {
         try {
           resolve(JSON.parse(data));
-        } catch (err) {
-          reject(err);
+        } catch {
+          resolve({});
         }
       });
-    }).on('error', reject);
+    }).on('error', () => resolve({}));
   });
 }
 
@@ -35,97 +27,63 @@ async function getMarketData() {
     'https://api.coingecko.com/api/v3/simple/price' +
     '?ids=bitcoin,ethereum,solana' +
     '&vs_currencies=usd' +
-    '&include_24hr_change=true' +
-    '&include_24hr_vol=true';
+    '&include_24hr_change=true';
 
   const data = await getJSON(url);
+
+  function safe(obj, key) {
+    return obj && typeof obj[key] !== 'undefined' ? obj[key] : 0;
+  }
 
   return [
     {
       symbol: 'BTC',
-      name: 'Bitcoin',
-      price: data.bitcoin.usd,
-      change24h: data.bitcoin.usd_24h_change || 0,
-      volume24h: data.bitcoin.usd_24h_vol || 0,
-      key: 'bitcoin'
+      price: safe(data.bitcoin, 'usd'),
+      change: safe(data.bitcoin, 'usd_24h_change')
     },
     {
       symbol: 'ETH',
-      name: 'Ethereum',
-      price: data.ethereum.usd,
-      change24h: data.ethereum.usd_24h_change || 0,
-      volume24h: data.ethereum.usd_24h_vol || 0,
-      key: 'ethereum'
+      price: safe(data.ethereum, 'usd'),
+      change: safe(data.ethereum, 'usd_24h_change')
     },
     {
       symbol: 'SOL',
-      name: 'Solana',
-      price: data.solana.usd,
-      change24h: data.solana.usd_24h_change || 0,
-      volume24h: data.solana.usd_24h_vol || 0,
-      key: 'solana'
+      price: safe(data.solana, 'usd'),
+      change: safe(data.solana, 'usd_24h_change')
     }
   ];
 }
 
-function scoreAsset(asset) {
-  let score = 50;
-  let reasons = [];
+bot.onText(/\/start/, (msg) => {
+  bot.sendMessage(msg.chat.id, '🚀 Atlas system ready\n\n/price\n/scan');
+});
 
-  if (asset.change24h >= 6) {
-    score += 25;
-    reasons.push('strong 24h momentum');
-  } else if (asset.change24h >= 3) {
-    score += 15;
-    reasons.push('healthy 24h momentum');
-  } else if (asset.change24h <= -5) {
-    score -= 20;
-    reasons.push('heavy 24h weakness');
-  } else if (asset.change24h <= -2) {
-    score -= 10;
-    reasons.push('negative 24h trend');
+bot.on('message', (msg) => {
+  if (msg.text && msg.text.toLowerCase() === 'test') {
+    bot.sendMessage(msg.chat.id, '✅ Working');
   }
+});
 
-  if (asset.volume24h >= 10000000000) {
-    score += 10;
-    reasons.push('very high volume');
-  } else if (asset.volume24h >= 1000000000) {
-    score += 5;
-    reasons.push('strong volume');
-  }
+bot.onText(/\/price/, async (msg) => {
+  const data = await getMarketData();
+  const text = data.map((c) => `${c.symbol}: $${c.price}`).join('\n');
+  bot.sendMessage(msg.chat.id, text);
+});
 
-  let bias = 'NEUTRAL';
-  if (score >= 80) bias = 'STRONG BUY';
-  else if (score >= 65) bias = 'BUY';
-  else if (score <= 30) bias = 'AVOID';
-  else if (score <= 40) bias = 'WEAK';
+bot.onText(/\/scan/, async (msg) => {
+  const data = await getMarketData();
 
-  return {
-    ...asset,
-    score,
-    bias,
-    reasons
-  };
-}
+  const text = data
+    .map(
+      (c) =>
+        `${c.symbol}\nPrice: $${c.price}\n24h: ${Number(c.change).toFixed(2)}%\n`
+    )
+    .join('\n');
 
-function formatPrice(n) {
-  return `$${Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-}
+  bot.sendMessage(msg.chat.id, `🧠 SCAN\n\n${text}`);
+});
 
-function formatPct(n) {
-  const sign = n >= 0 ? '+' : '';
-  return `${sign}${n.toFixed(2)}%`;
-}
-
-function buildSignalMessage(a) {
-  const reasons = a.reasons.length ? a.reasons.join(', ') : 'no strong edge';
-  return (
-    `🚨 ${a.symbol} SIGNAL\n\n` +
-    `Bias: ${a.bias}\n` +
-    `Score: ${a.score}/100\n` +
-    `Price: ${formatPrice(a.price)}\n` +
-    `24h Change: ${formatPct(a.change24h)}\n` +
-    `24h Volume: ${formatPrice(a.volume24h)}\n` +
-    `Reason: ${reasons}`
-  );
-}
+bot.onText(/\/alert (.+)/, (msg, match) => {
+  bot.sendMessage(CHANNEL_ID, match[1]);
+  bot.sendMessage(msg.chat.id, '✅ Sent to Atlas Alerts');
+});
