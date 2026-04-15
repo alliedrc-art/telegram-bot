@@ -15,3 +15,6 @@ bot.on('message', (msg) => {
 bot.onText(/\/price/, (msg) => {
   bot.sendMessage(msg.chat.id, 'BTC: $67,000');
 });
+bot.on('message', (msg) => {
+  console.log(msg);
+});
