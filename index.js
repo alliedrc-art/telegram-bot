@@ -4,93 +4,47 @@ const https = require('https');
 const token = process.env.TELEGRAM_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
-const CHANNEL_ID = '-1003775562827';
+const OWNER_ID = 7434611094;
+
+function isOwner(msg) {
+  return msg.from.id === OWNER_ID;
+}
+
 function getJSON(url) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
       let data = '';
-
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-
+      res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data);
-          resolve(parsed);
-        } catch (err) {
-          console.log('RAW RESPONSE:', data);
-          reject(err);
-        }
+        try { resolve(JSON.parse(data)); }
+        catch { resolve({}); }
       });
-    }).on('error', (err) => {
-      console.log('REQUEST ERROR:', err);
-      reject(err);
-    });
+    }).on('error', () => resolve({}));
   });
 }
-async function getMarketData() {
-  const url =
-    'https://api.coingecko.com/api/v3/simple/price' +
-    '?ids=bitcoin,ethereum,solana' +
-    '&vs_currencies=usd' +
-    '&include_24hr_change=true';
 
+async function getPrices() {
+  const url = 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd';
   const data = await getJSON(url);
 
-  function safe(obj, key) {
-    return obj && typeof obj[key] !== 'undefined' ? obj[key] : 0;
-  }
-
   return [
-    {
-      symbol: 'BTC',
-      price: safe(data.bitcoin, 'usd'),
-      change: safe(data.bitcoin, 'usd_24h_change')
-    },
-    {
-      symbol: 'ETH',
-      price: safe(data.ethereum, 'usd'),
-      change: safe(data.ethereum, 'usd_24h_change')
-    },
-    {
-      symbol: 'SOL',
-      price: safe(data.solana, 'usd'),
-      change: safe(data.solana, 'usd_24h_change')
-    }
+    { symbol: 'BTC', price: data.bitcoin?.usd || 0 },
+    { symbol: 'ETH', price: data.ethereum?.usd || 0 },
+    { symbol: 'SOL', price: data.solana?.usd || 0 }
   ];
 }
 
 bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id, '🚀 Atlas system ready\n\n/price\n/scan');
-});
-
-bot.on('message', (msg) => {
-  if (msg.text && msg.text.toLowerCase() === 'test') {
-    bot.sendMessage(msg.chat.id, '✅ Working');
-  }
+  if (!isOwner(msg)) return;
+  bot.sendMessage(msg.chat.id, '🚀 Atlas V3 Lite Ready\n\n/price');
 });
 
 bot.onText(/\/price/, async (msg) => {
-  const data = await getMarketData();
-  const text = data.map((c) => `${c.symbol}: $${c.price}`).join('\n');
+  if (!isOwner(msg)) return;
+
+  const prices = await getPrices();
+
+  const text = prices.map(p => `${p.symbol}: $${p.price}`).join('\n');
+
   bot.sendMessage(msg.chat.id, text);
-});
-
-bot.onText(/\/scan/, async (msg) => {
-  const data = await getMarketData();
-
-  const text = data
-    .map(
-      (c) =>
-        `${c.symbol}\nPrice: $${c.price}\n24h: ${Number(c.change).toFixed(2)}%\n`
-    )
-    .join('\n');
-
-  bot.sendMessage(msg.chat.id, `🧠 SCAN\n\n${text}`);
-});
-
-bot.onText(/\/alert (.+)/, (msg, match) => {
-  bot.sendMessage(CHANNEL_ID, match[1]);
-  bot.sendMessage(msg.chat.id, '✅ Sent to Atlas Alerts');
 });
