@@ -15,3 +15,8 @@ bot.on('message', (msg) => {
 bot.onText(/\/price/, (msg) => {
   bot.sendMessage(msg.chat.id, 'BTC: $67,000');
 });
+const CHANNEL_ID = '-1003775562827';
+
+bot.onText(/\/alert (.+)/, (msg, match) => {
+  bot.sendMessage(CHANNEL_ID, match[1]);
+});
