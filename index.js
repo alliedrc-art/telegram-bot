@@ -5,10 +5,9 @@ const token = process.env.TELEGRAM_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
 const CHANNEL_ID = '-1003775562827';
-
 function getJSON(url) {
   return new Promise((resolve, reject) => {
-    https.get(url, (res) => {
+    https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
       let data = '';
 
       res.on('data', (chunk) => {
@@ -20,12 +19,12 @@ function getJSON(url) {
           const parsed = JSON.parse(data);
           resolve(parsed);
         } catch (err) {
-          console.log('JSON parse error:', data);
+          console.log('RAW RESPONSE:', data);
           reject(err);
         }
       });
     }).on('error', (err) => {
-      console.log('Request error:', err);
+      console.log('REQUEST ERROR:', err);
       reject(err);
     });
   });
