@@ -1,16 +1,16 @@
-const https = require("https");
+const TelegramBot = require('node-telegram-bot-api');
 
-const TOKEN = process.env.TELEGRAM_TOKEN;
-const CHAT_ID = process.env.CHAT_ID;
+const token = process.env.TELEGRAM_TOKEN;
+const chatId = process.env.CHAT_ID;
 
-function sendMessage(text) {
-  const url = "https://api.telegram.org/bot" + TOKEN + "/sendMessage?chat_id=" + CHAT_ID + "&text=" + encodeURIComponent(text);
+const bot = new TelegramBot(token, { polling: true });
 
-  https.get(url, function(res) {
-    console.log("Message sent");
-  }).on("error", function(e) {
-    console.error(e);
-  });
-}
+// Startup message
+bot.sendMessage(chatId, "🚀 Bot is LIVE on Railway!");
 
-sendMessage("Bot is LIVE on Railway!");
+// Test reply
+bot.on('message', (msg) => {
+  if (msg.text === 'test') {
+    bot.sendMessage(msg.chat.id, '✅ Working');
+  }
+});
