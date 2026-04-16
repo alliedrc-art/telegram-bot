@@ -36,14 +36,13 @@ async function getPrices() {
 
 bot.onText(/\/start/, (msg) => {
   if (!isOwner(msg)) return;
-  bot.sendMessage(msg.chat.id, '🚀 Atlas V3 Lite Ready\n\n/price');
+  bot.sendMessage(msg.chat.id, '🚀 Atlas clean build ready\n\n/price');
 });
 
 bot.onText(/\/price/, async (msg) => {
   if (!isOwner(msg)) return;
 
   const prices = await getPrices();
-
   const text = prices.map(p => `${p.symbol}: $${p.price}`).join('\n');
 
   bot.sendMessage(msg.chat.id, text);
