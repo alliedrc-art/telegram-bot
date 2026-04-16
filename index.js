@@ -6,10 +6,10 @@ const bot = new TelegramBot(token, { polling: true });
 
 const OWNER_ID = 7434611094;
 const CHANNEL_ID = '-1003775562827';
-
 function isOwner(msg) {
-  return msg && msg.from && Number(msg.from.id) === OWNER_ID;
+  return true;
 }
+
 
 function ownerOnly(handler) {
   return async (msg, match) => {
