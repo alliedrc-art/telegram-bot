@@ -4,12 +4,9 @@ const https = require('https');
 const token = process.env.TELEGRAM_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
-const OWNER_ID = 7434611094;
-const CHANNEL_ID = '-1003775562827';
 function isOwner(msg) {
   return true;
 }
-
 
 function ownerOnly(handler) {
   return async (msg, match) => {
@@ -21,6 +18,9 @@ function ownerOnly(handler) {
     }
   };
 }
+
+const alerts = [];
+const CHECK_INTERVAL_MS = 60 * 1000;
 
 function getJSON(url) {
   return new Promise((resolve, reject) => {
@@ -37,7 +37,7 @@ function getJSON(url) {
         res.on('end', () => {
           try {
             resolve(JSON.parse(data));
-          } catch (err) {
+          } catch {
             reject(new Error('Bad API response'));
           }
         });
@@ -48,153 +48,114 @@ function getJSON(url) {
   });
 }
 
+async function getPrices() {
+  const url =
+    'https://api.coingecko.com/api/v3/simple/price' +
+    '?ids=bitcoin,ethereum,solana&vs_currencies=usd';
+
+  const data = await getJSON(url);
+
+  return {
+    btc: Number(data.bitcoin?.usd || 0),
+    eth: Number(data.ethereum?.usd || 0),
+    sol: Number(data.solana?.usd || 0)
+  };
+}
+
 function formatPrice(n) {
   return `$${Number(n).toLocaleString(undefined, {
     maximumFractionDigits: 2
   })}`;
 }
 
-function formatPct(n) {
-  const num = Number(n || 0);
-  const sign = num >= 0 ? '+' : '';
-  return `${sign}${num.toFixed(2)}%`;
-}
-
-async function getMarketData() {
-  const url =
-    'https://api.coingecko.com/api/v3/simple/price' +
-    '?ids=bitcoin,ethereum,solana' +
-    '&vs_currencies=usd' +
-    '&include_24hr_change=true' +
-    '&include_24hr_vol=true';
-
-  const data = await getJSON(url);
-
-  function safe(obj, key) {
-    return obj && typeof obj[key] !== 'undefined' ? obj[key] : 0;
-  }
-
-  return [
-    {
-      symbol: 'BTC',
-      name: 'Bitcoin',
-      price: safe(data.bitcoin, 'usd'),
-      change24h: safe(data.bitcoin, 'usd_24h_change'),
-      volume24h: safe(data.bitcoin, 'usd_24h_vol')
-    },
-    {
-      symbol: 'ETH',
-      name: 'Ethereum',
-      price: safe(data.ethereum, 'usd'),
-      change24h: safe(data.ethereum, 'usd_24h_change'),
-      volume24h: safe(data.ethereum, 'usd_24h_vol')
-    },
-    {
-      symbol: 'SOL',
-      name: 'Solana',
-      price: safe(data.solana, 'usd'),
-      change24h: safe(data.solana, 'usd_24h_change'),
-      volume24h: safe(data.solana, 'usd_24h_vol')
-    }
-  ];
-}
-
-function scoreAsset(asset) {
-  let score = 50;
-  const reasons = [];
-
-  if (asset.change24h >= 8) {
-    score += 30;
-    reasons.push('explosive momentum');
-  } else if (asset.change24h >= 5) {
-    score += 20;
-    reasons.push('strong momentum');
-  } else if (asset.change24h >= 2) {
-    score += 10;
-    reasons.push('positive trend');
-  } else if (asset.change24h <= -8) {
-    score -= 30;
-    reasons.push('heavy weakness');
-  } else if (asset.change24h <= -4) {
-    score -= 15;
-    reasons.push('negative trend');
-  }
-
-  if (asset.volume24h >= 15000000000) {
-    score += 10;
-    reasons.push('extreme volume');
-  } else if (asset.volume24h >= 3000000000) {
-    score += 5;
-    reasons.push('strong volume');
-  }
-
-  let bias = 'NEUTRAL';
-  if (score >= 80) bias = 'STRONG BUY';
-  else if (score >= 65) bias = 'BUY';
-  else if (score <= 30) bias = 'AVOID';
-  else if (score <= 40) bias = 'WEAK';
-
-  return { ...asset, score, bias, reasons };
-}
-
-async function runScan() {
-  const assets = await getMarketData();
-  return assets.map(scoreAsset).sort((a, b) => b.score - a.score);
-}
-
 bot.onText(/\/start/, ownerOnly(async (msg) => {
   await bot.sendMessage(
     msg.chat.id,
-    '🚀 Atlas Secure Clean Build\n\nCommands:\n/price\n/scan\n/alert your message\n/alerttest\n/version'
+    '🚀 Atlas V3 Step 1 Ready\n\nCommands:\n/price\n/alert btc 80000\n/alert eth 3000\n/alerts\n/clearalerts'
   );
 }));
 
 bot.onText(/\/version/, ownerOnly(async (msg) => {
-  await bot.sendMessage(msg.chat.id, 'ATLAS_CLEAN_V1');
+  await bot.sendMessage(msg.chat.id, 'ATLAS_V3_STEP1');
 }));
 
-bot.on('message', async (msg) => {
-  if (!isOwner(msg)) return;
-  if (msg.text && msg.text.toLowerCase() === 'test') {
-    await bot.sendMessage(msg.chat.id, '✅ Working');
-  }
-});
-
 bot.onText(/\/price/, ownerOnly(async (msg) => {
-  const assets = await getMarketData();
+  const prices = await getPrices();
 
-  const text = assets
-    .map(
-      (a) => `${a.symbol}: ${formatPrice(a.price)} | ${formatPct(a.change24h)}`
-    )
-    .join('\n');
+  const text =
+    `BTC: ${formatPrice(prices.btc)}\n` +
+    `ETH: ${formatPrice(prices.eth)}\n` +
+    `SOL: ${formatPrice(prices.sol)}`;
 
   await bot.sendMessage(msg.chat.id, `📊 LIVE PRICES\n\n${text}`);
 }));
 
-bot.onText(/\/scan/, ownerOnly(async (msg) => {
-  const scored = await runScan();
+bot.onText(/\/alert\s+(btc|eth|sol)\s+(\d+(\.\d+)?)/i, ownerOnly(async (msg, match) => {
+  const symbol = match[1].toLowerCase();
+  const target = Number(match[2]);
 
-  const text = scored
-    .map(
-      (a) =>
-        `${a.symbol} — ${a.bias}\n` +
-        `Score: ${a.score}/100\n` +
-        `Price: ${formatPrice(a.price)}\n` +
-        `24h: ${formatPct(a.change24h)}\n`
-    )
+  alerts.push({
+    chatId: msg.chat.id,
+    symbol,
+    target,
+    triggered: false
+  });
+
+  await bot.sendMessage(
+    msg.chat.id,
+    `✅ Alert added\n\nCoin: ${symbol.toUpperCase()}\nTarget: ${formatPrice(target)}`
+  );
+}));
+
+bot.onText(/\/alerts/, ownerOnly(async (msg) => {
+  const userAlerts = alerts.filter((a) => a.chatId === msg.chat.id && !a.triggered);
+
+  if (!userAlerts.length) {
+    await bot.sendMessage(msg.chat.id, 'No active alerts.');
+    return;
+  }
+
+  const text = userAlerts
+    .map((a, i) => `${i + 1}. ${a.symbol.toUpperCase()} → ${formatPrice(a.target)}`)
     .join('\n');
 
-  await bot.sendMessage(msg.chat.id, `🧠 ATLAS SCAN\n\n${text}`);
+  await bot.sendMessage(msg.chat.id, `🔔 ACTIVE ALERTS\n\n${text}`);
 }));
 
-bot.onText(/\/alerttest/, ownerOnly(async (msg) => {
-  await bot.sendMessage(CHANNEL_ID, '🚀 TEST ALERT FROM ATLAS CLEAN BUILD');
-  await bot.sendMessage(msg.chat.id, '✅ Sent test alert to Atlas Alerts');
+bot.onText(/\/clearalerts/, ownerOnly(async (msg) => {
+  for (const alert of alerts) {
+    if (alert.chatId === msg.chat.id) {
+      alert.triggered = true;
+    }
+  }
+
+  await bot.sendMessage(msg.chat.id, '🗑 Cleared all your alerts.');
 }));
 
-bot.onText(/\/alert (.+)/, ownerOnly(async (msg, match) => {
-  const text = match[1];
-  await bot.sendMessage(CHANNEL_ID, text);
-  await bot.sendMessage(msg.chat.id, '✅ Sent to Atlas Alerts');
-}));
+async function checkAlerts() {
+  try {
+    const prices = await getPrices();
+
+    for (const alert of alerts) {
+      if (alert.triggered) continue;
+
+      const current = prices[alert.symbol];
+
+      if (!current) continue;
+
+      if (current >= alert.target) {
+        alert.triggered = true;
+
+        await bot.sendMessage(
+          alert.chatId,
+          `🚨 ALERT TRIGGERED\n\nCoin: ${alert.symbol.toUpperCase()}\nTarget: ${formatPrice(alert.target)}\nCurrent: ${formatPrice(current)}`
+        );
+      }
+    }
+  } catch (err) {
+    console.log('Alert check failed:', err.message);
+  }
+}
+
+setInterval(checkAlerts, CHECK_INTERVAL_MS);
+checkAlerts();
