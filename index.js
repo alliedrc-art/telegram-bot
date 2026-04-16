@@ -20,7 +20,7 @@ function ownerOnly(handler) {
 }
 
 const alerts = [];
-const CHECK_INTERVAL_MS = 60 * 1000;
+const CHECK_INTERVAL_MS = 10 * 1000;
 
 function getJSON(url) {
   return new Promise((resolve, reject) => {
